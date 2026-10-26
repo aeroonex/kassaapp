@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Kassa</string>
+    <string name="monitoring_notice">Kassa nazorati yoqilgan: ekran monitoring uchun serverga yuborilmoqda</string>
+    <string name="setup_required">Qurilma hali sozlanmagan. Administrator bilan bog\'laning.</string>
+</resources>
