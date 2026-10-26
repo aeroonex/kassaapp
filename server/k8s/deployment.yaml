@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kassaapp-server
+  namespace: kassaapp
+spec:
+  replicas: 1 # SQLite + a PVC: keep this at 1, don't scale horizontally
+  strategy:
+    type: Recreate # avoid two pods writing the same SQLite file at once
+  selector:
+    matchLabels:
+      app: kassaapp-server
+  template:
+    metadata:
+      labels:
+        app: kassaapp-server
+    spec:
+      containers:
+        - name: kassaapp-server
+          # Replace with your pushed image (see server/k8s/README.md).
+          image: ghcr.io/aeroonex/kassaapp-server:latest
+          ports:
+            - containerPort: 3000
+          envFrom:
+            - secretRef:
+                name: kassaapp-server-env
+          env:
+            - name: PORT
+              value: "3000"
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /login.html
+              port: 3000
+            initialDelaySeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /login.html
+              port: 3000
+            initialDelaySeconds: 15
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: kassaapp-server-data

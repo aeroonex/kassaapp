@@ -1,3 +1,4 @@
 node_modules/
 .env
 data/
+k8s/secret.yaml

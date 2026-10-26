@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kassaapp-server-data
+  namespace: kassaapp
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      # SQLite DB + uploaded screenshots for up to 300 devices, 30-day
+      # retention at ~1 shot/5s, ~15-25KB JPEG each. Adjust if the
+      # cluster's default StorageClass needs a smaller/larger request.
+      storage: 20Gi

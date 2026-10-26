@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: kassaapp-server
+  namespace: kassaapp
+spec:
+  selector:
+    app: kassaapp-server
+  ports:
+    - port: 80
+      targetPort: 3000
+  type: ClusterIP

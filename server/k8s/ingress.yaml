@@ -1,0 +1,30 @@
+# Assumes an nginx ingress controller + cert-manager already running in
+# the cluster (the most common setup). Replace the host and
+# cert-manager issuer name to match what's actually installed — tell me
+# which ingress controller/cert-manager issuer the cluster uses and I'll
+# adjust this.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: kassaapp-server
+  namespace: kassaapp
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/proxy-body-size: 10m
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - kassa.CHANGE-ME-DOMAIN.uz
+      secretName: kassaapp-server-tls
+  rules:
+    - host: kassa.CHANGE-ME-DOMAIN.uz
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: kassaapp-server
+                port:
+                  number: 80
