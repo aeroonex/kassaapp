@@ -26,16 +26,18 @@ ekranini monitoring serveriga yuboradigan Android ilova.
   orqali internet qaytganini ushlab, navbatdagi barcha suratlarni
   ketma-ket, olingan tartibida serverga yuklaydi.
 
-## Serverga yuklash formati
+## Monitoring server + web panel
 
-`POST {server_url}/api/devices/{device_id}/screenshots` — multipart form:
+Shu repoda, [`server/`](server/) papkasida: skrinshotlarni qabul qiladi,
+saqlaydi (saqlash muddati avtomatik tozalanadi) va barcha qurilmalarni
+ko'rsatadigan web panelni beradi (login bilan himoyalangan). Ishga tushirish
+va API tafsilotlari uchun [`server/README.md`](server/README.md)ga qarang.
+
+`POST {server_url}/api/devices/{device_id}/screenshots` — multipart form,
+`X-Upload-Token` header bilan:
 - `device_id` — qurilma identifikatori
 - `timestamp` — millisekundlarda
 - `screenshot` — JPEG fayl
-
-Server va boshqaruv paneli (barcha 300 qurilmani ko'rish) alohida loyiha
-sifatida qo'shiladi — bu repo hozircha faqat Android ilovani o'z ichiga
-oladi.
 
 ## Device Owner sifatida o'rnatish (bitta telefon uchun)
 
@@ -55,18 +57,23 @@ adb shell dpm set-device-owner com.aeroonex.kassaapp/.MyDeviceAdminReceiver
 - Yoki `adb` orqali USB bilan ketma-ket (300 tasi uchun sekinroq, lekin
   oddiy).
 
-## Hali ochiq savollar
+## Qabul qilingan qarorlar
 
-1. **Skrinshotlarni qancha vaqt saqlash kerak** (server tomonida
-   retention) — hali belgilanmagan.
-2. **Wi-Fi yoki mobil internet** — bu tanlov upload chastotasi/siqish
-   sifatiga ta'sir qiladi; hozircha JPEG 60% sifat bilan yuborilmoqda,
-   kerak bo'lsa moslashtiramiz.
-3. Monitoring serverining haqiqiy manzili (`ApiConfig.DEFAULT_SERVER_URL`
-   hozircha placeholder).
+- **Saqlash muddati: 30 kun** (`server/.env` dagi `RETENTION_DAYS` bilan
+  o'zgartiriladi, standart shu).
+- **Wi-Fi ham, mobil internet ham qo'llab-quvvatlanadi** — qaysi biri
+  ishlatilishidan qat'i nazar, offline navbat (`ScreenshotQueue`) va
+  internet qaytganda avtomatik yuklash ikkisida ham bir xil ishlaydi.
+  JPEG 60% sifat hozircha ikkisiga ham mos (kichik fayl, ~10-40 KB/surat).
+- Monitoring serverining haqiqiy manzili va upload-tokeni hali
+  placeholder (`ApiConfig.DEFAULT_SERVER_URL` / `DEFAULT_UPLOAD_TOKEN`) —
+  server joylashtirilgandan keyin shu ikkisini real qiymatlarga
+  almashtirib, APK qayta build qilinadi.
 
 ## Keyingi qadamlar
 
-- Haqiqiy kassir UI (hozir faqat status matni ko'rsatiladi).
-- Monitoring server + web panel (boshqa repo/loyihada).
-- QR-kod orqali ommaviy provisioning skripti.
+- Haqiqiy kassir (sotish) interfeysi — hozir faqat status matni
+  ko'rsatiladi; mahsulot/narx/chek bosib chiqarish talablari
+  aniqlanmagani uchun hali yozilmagan.
+- QR-kod orqali ommaviy provisioning skripti (300 telefonni birma-bir
+  `adb` orqali sozlash o'rniga).

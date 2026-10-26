@@ -209,6 +209,7 @@ class ScreenshotUploadService : Service() {
 
             val request = Request.Builder()
                 .url("$serverUrl/api/devices/$deviceId/screenshots")
+                .header("X-Upload-Token", ApiConfig.getUploadToken(this))
                 .post(body)
                 .build()
 

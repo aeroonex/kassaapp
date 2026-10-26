@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="uz">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Kirish — Kassa monitoring</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body class="login-body">
+  <form id="loginForm" class="login-card">
+    <h1>Kassa monitoring</h1>
+    <label>Login<input type="text" id="username" autocomplete="username" required /></label>
+    <label>Parol<input type="password" id="password" autocomplete="current-password" required /></label>
+    <button type="submit">Kirish</button>
+    <p id="error" class="error"></p>
+  </form>
+  <script>
+    document.getElementById("loginForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const username = document.getElementById("username").value;
+      const password = document.getElementById("password").value;
+      const res = await fetch("/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+      if (res.ok) {
+        window.location.href = "/index.html";
+      } else {
+        document.getElementById("error").textContent = "Login yoki parol xato";
+      }
+    });
+  </script>
+</body>
+</html>

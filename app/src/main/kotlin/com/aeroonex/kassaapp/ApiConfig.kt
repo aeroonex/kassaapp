@@ -12,9 +12,12 @@ object ApiConfig {
     private const val PREFS = "kassa_config"
     private const val KEY_SERVER_URL = "server_url"
     private const val KEY_DEVICE_ID = "device_id"
+    private const val KEY_UPLOAD_TOKEN = "upload_token"
 
     // Fallback defaults; replace with the real monitoring server before shipping.
     private const val DEFAULT_SERVER_URL = "https://kassa-monitor.example.com"
+    // Must match the monitoring server's UPLOAD_TOKEN (server/.env) exactly.
+    private const val DEFAULT_UPLOAD_TOKEN = "change-me-device-token"
 
     fun getServerUrl(context: Context): String {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -24,6 +27,16 @@ object ApiConfig {
     fun setServerUrl(context: Context, url: String) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putString(KEY_SERVER_URL, url).apply()
+    }
+
+    fun getUploadToken(context: Context): String {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        return prefs.getString(KEY_UPLOAD_TOKEN, DEFAULT_UPLOAD_TOKEN) ?: DEFAULT_UPLOAD_TOKEN
+    }
+
+    fun setUploadToken(context: Context, token: String) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putString(KEY_UPLOAD_TOKEN, token).apply()
     }
 
     fun getDeviceId(context: Context): String {
