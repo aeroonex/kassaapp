@@ -19,6 +19,12 @@ ekranini monitoring serveriga yuboradigan Android ilova.
   ekranini suratga oladi — shu sababli `MediaProjection` ruxsat oynasi
   kerak emas. Doimiy bildirishnoma kassirga monitoring yoqilganini
   ko'rsatib turadi.
+- **Offline rejim.** Har bir surat avval telefon xotirasiga
+  (`ScreenshotQueue`) yoziladi, keyin yuklashga urinadi. Internet
+  (Wi-Fi yoki mobil) yo'q bo'lsa, suratlar navbatda qolaveradi (taxminan
+  24 soatlik, keyin eng eskilari o'chiriladi). `ConnectivityManager`
+  orqali internet qaytganini ushlab, navbatdagi barcha suratlarni
+  ketma-ket, olingan tartibida serverga yuklaydi.
 
 ## Serverga yuklash formati
 

@@ -3,11 +3,14 @@ package com.aeroonex.kassaapp
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
@@ -20,23 +23,30 @@ import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.asRequestBody
+import java.io.ByteArrayOutputStream
 import java.io.File
-import java.io.FileOutputStream
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 
 /**
  * Foreground service that captures the cashier app's own window every
- * [CAPTURE_INTERVAL_MS] and uploads it to the monitoring server. Only our
- * own window is captured (via PixelCopy against our window's Surface), so
- * no MediaProjection / "record screen" consent dialog is needed — that
- * consent is only required to capture content outside our own app.
+ * [CAPTURE_INTERVAL_MS]. Every capture is first written to
+ * [ScreenshotQueue] on disk, then an upload flush is attempted — so
+ * screenshots taken while offline are not lost, and the moment the
+ * phone regains Wi-Fi/mobile data (detected via [ConnectivityManager]),
+ * everything queued up is uploaded in order.
  *
- * Cashiers are informed this runs; the persistent notification below is
- * the visible indicator required by that agreement.
+ * Only our own window is captured (via PixelCopy against our window's
+ * Surface), so no MediaProjection / "record screen" consent dialog is
+ * needed — that consent is only required to capture content outside our
+ * own app. Cashiers are informed this runs; the persistent notification
+ * below is the visible indicator required by that agreement.
  */
 class ScreenshotUploadService : Service() {
 
     private val handler = Handler(Looper.getMainLooper())
+    private val uploadExecutor: ExecutorService = Executors.newSingleThreadExecutor()
     private val client = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .writeTimeout(10, TimeUnit.SECONDS)
@@ -44,6 +54,13 @@ class ScreenshotUploadService : Service() {
         .build()
 
     private var running = false
+    private lateinit var connectivityManager: ConnectivityManager
+    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) {
+            Log.i(TAG, "Network available, flushing queued screenshots")
+            flushQueue()
+        }
+    }
 
     companion object {
         private const val TAG = "KassaScreenshot"
@@ -63,10 +80,20 @@ class ScreenshotUploadService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    override fun onCreate() {
+        super.onCreate()
+        connectivityManager = getSystemService(ConnectivityManager::class.java)
+        val request = NetworkRequest.Builder()
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .build()
+        connectivityManager.registerNetworkCallback(request, networkCallback)
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (!running) {
             running = true
             startForeground(NOTIF_ID, buildNotification())
+            flushQueue()
             scheduleCapture()
         }
         return START_STICKY
@@ -91,13 +118,13 @@ class ScreenshotUploadService : Service() {
     private fun scheduleCapture() {
         handler.postDelayed(object : Runnable {
             override fun run() {
-                captureAndUpload()
+                captureToQueue()
                 handler.postDelayed(this, CAPTURE_INTERVAL_MS)
             }
         }, CAPTURE_INTERVAL_MS)
     }
 
-    private fun captureAndUpload() {
+    private fun captureToQueue() {
         val activity = KassaApp.currentActivity ?: return
         val window = activity.window ?: return
         val view = window.decorView
@@ -108,33 +135,72 @@ class ScreenshotUploadService : Service() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 PixelCopy.request(window, bitmap, { result ->
                     if (result == PixelCopy.SUCCESS) {
-                        uploadBitmap(bitmap)
+                        enqueueAndFlush(bitmap)
                     } else {
                         Log.w(TAG, "PixelCopy failed: $result")
                     }
                 }, handler)
             } else {
                 view.draw(android.graphics.Canvas(bitmap))
-                uploadBitmap(bitmap)
+                enqueueAndFlush(bitmap)
             }
         } catch (e: Exception) {
             Log.w(TAG, "Capture failed: ${e.message}")
         }
     }
 
-    private fun uploadBitmap(bitmap: Bitmap) {
-        val file = File(cacheDir, "shot_${System.currentTimeMillis()}.jpg")
-        try {
-            FileOutputStream(file).use { out ->
+    private fun enqueueAndFlush(bitmap: Bitmap) {
+        uploadExecutor.execute {
+            try {
+                val out = ByteArrayOutputStream()
                 bitmap.compress(Bitmap.CompressFormat.JPEG, 60, out)
+                ScreenshotQueue.enqueue(this, out.toByteArray())
+            } catch (e: Exception) {
+                Log.w(TAG, "Queue write failed: ${e.message}")
             }
-            val deviceId = ApiConfig.getDeviceId(this)
-            val serverUrl = ApiConfig.getServerUrl(this)
+            flushQueueInternal()
+        }
+    }
+
+    /** Safe to call from any thread; the actual network/disk work always runs on [uploadExecutor]. */
+    private fun flushQueue() {
+        uploadExecutor.execute { flushQueueInternal() }
+    }
+
+    private fun flushQueueInternal() {
+        if (!isOnline()) return
+        val deviceId = ApiConfig.getDeviceId(this)
+        val serverUrl = ApiConfig.getServerUrl(this)
+
+        for (file in ScreenshotQueue.pending(this)) {
+            val uploaded = uploadFile(file, serverUrl, deviceId)
+            if (uploaded) {
+                file.delete()
+            } else {
+                // Stop at the first failure so screenshots stay queued in
+                // order instead of hammering a server that's still down.
+                break
+            }
+        }
+    }
+
+    private fun isOnline(): Boolean {
+        val network = connectivityManager.activeNetwork ?: return false
+        val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
+        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+            capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+    }
+
+    private fun uploadFile(file: File, serverUrl: String, deviceId: String): Boolean {
+        return try {
+            // The queued timestamp is in the filename (shot_<millis>.jpg), so the
+            // server sees when it was actually captured, not when it was sent.
+            val timestamp = file.name.removePrefix("shot_").removeSuffix(".jpg")
 
             val body = MultipartBody.Builder()
                 .setType(MultipartBody.FORM)
                 .addFormDataPart("device_id", deviceId)
-                .addFormDataPart("timestamp", System.currentTimeMillis().toString())
+                .addFormDataPart("timestamp", timestamp)
                 .addFormDataPart(
                     "screenshot", file.name,
                     file.asRequestBody("image/jpeg".toMediaType())
@@ -150,17 +216,23 @@ class ScreenshotUploadService : Service() {
                 if (!response.isSuccessful) {
                     Log.w(TAG, "Upload failed: HTTP ${response.code}")
                 }
+                response.isSuccessful
             }
         } catch (e: Exception) {
             Log.w(TAG, "Upload error: ${e.message}")
-        } finally {
-            file.delete()
+            false
         }
     }
 
     override fun onDestroy() {
         running = false
         handler.removeCallbacksAndMessages(null)
+        try {
+            connectivityManager.unregisterNetworkCallback(networkCallback)
+        } catch (e: Exception) {
+            Log.w(TAG, "unregisterNetworkCallback failed: ${e.message}")
+        }
+        uploadExecutor.shutdown()
         super.onDestroy()
     }
 }
